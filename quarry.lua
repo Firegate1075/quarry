@@ -101,22 +101,32 @@ function equipPickaxe()
     slot = findItem(PICK)
     if slot == 17 then
         -- assume pickaxe is already equipped
-        return   
+        return false
     end
     
     turtle.select(slot)
-    turtle.equipRight()
+    if (turtle.getItemCount() == 0) then
+        return false
+    end
+
+    suc = turtle.equipRight()
+    return suc
 end
 
 function equipModem()
     slot = findItem(MODEM)
     
     if slot == 17 then
-        return
+        return false
     end
     
     turtle.select(slot)
-    turtle.equipRight()
+    if (turtle.getItemCount() == 0) then
+        return false
+    end
+
+    suc = turtle.equipRight()
+    return suc
 end
 
 function startMiner()
@@ -230,36 +240,66 @@ function handleModem()
         cmd = msg[1]
         if (cmd == "home") then
             homing = true
+            modem.transmit(99, ID, {"OK", cmd})
             return
         elseif (cmd == "setHome") then
             xHome = msg[2]
             yHome = msg[3]
             zHome = msg[4]
+            modem.transmit(99, ID, {"OK", cmd})
         elseif (cmd == "setSilk") then
             miner.stop()
             miner.reset()
             miner.setSilkTouch(msg[2])
             miner.start()
+            modem.transmit(99, ID, {"OK", cmd})
         elseif (cmd == "addFilter") then
             miner.stop()
             miner.reset()
             miner.addFilter(msg[2])
             miner.start()
+            modem.transmit(99, ID, {"OK", cmd})
         elseif (cmd == "removeFilter") then
             miner.stop()
             miner.reset()
             miner.removeFilter(msg[2])
             miner.start()
+            modem.transmit(99, ID, {"OK", cmd})
         elseif (cmd == "getPos") then
             x, y, z = gps.locate(5)
-            coords = {x, y, z}
-            modem.transmit(99, 1, coords)
+            response = {"OK", cmd, x, y, z}
+            modem.transmit(99, 1, response)
+        elseif (cmd == "getBlocks") then
+            blocks = miner.getToMine()
+            response = {"OK", cmd, blocks}
+            modem.transmit(99, 1, response)
         end
     end
 end
 
 function panic(message)
+    modem = peripheral.find("modem")
+    if (modem == nil) then
+        -- try to equip the modem
+        equipModem()
+    end
+    modem = peripheral.find("modem")
+    if (modem == nil) then
+        -- modem could not be equipped
+        os.shutdown()
+    end
 
+    x, y, z = gps.locate(5)
+    modem.open(1)
+    
+    modem.transmit(99, 1, {"PANIC", message, x, y, z})
+    event, mS, sCh, rCh, msg, d = os.pullEvent("modem_message")
+    while (msg[1] ~= "OK") do
+        modem.transmit(99, 1, {"PANIC", message, x, y, z})
+    end
+
+
+    os.shutdown()
 end
 
 
@@ -277,7 +317,11 @@ if (line == "moving") then
         newLine = file.readLine()
     end
 
-    move(32 - movesTaken, movesTaken)
+    suc = move(32 - movesTaken, movesTaken)
+    if (suc == false) then
+        panic("move")
+    end
+
     placeMiner()
 end
 
@@ -296,6 +340,10 @@ while true do
         break
     end
     
-    move(32, 0)
+    suc = move(32, 0)
+    if (suc == false) then
+        panic("move")
+    end
+
     placeMiner()
 end
